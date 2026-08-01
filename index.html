@@ -101,32 +101,41 @@
   // window.__wcLoadErrors menyimpan alasan gagal per-sumber (timeout / load error) supaya
   // bisa ditampilkan ke user untuk diagnosis, bukan cuma "gagal dimuat" yang generik.
   window.__wcLoadErrors = [];
-  // window.__loadWcModule() bisa dipanggil berkali-kali (dipakai ulang saat user menekan
-  // "Coba Lagi"), beda dari versi lama yang cuma jalan sekali lalu berhenti selamanya kalau gagal.
+  // FIX AKAR MASALAH (approve tidak pernah muncul): versi sebelumnya me-race 5 sumber lewat
+  // <script src> paralel. Masalahnya, browser TETAP MENGEKSEKUSI SEMUA script yang berhasil
+  // di-download — customElements.define yang dibikin "kebal" cuma mencegah CRASH-nya, bukan
+  // mencegah EKSEKUSI-nya. Jadi tetap ada beberapa salinan PENUH SDK WalletConnect jalan
+  // bersamaan di satu halaman, dan semuanya baca/tulis ke storage same-origin YANG SAMA
+  // (IndexedDB/localStorage WalletConnect pakai key tetap, bukan per-instance). Akibatnya:
+  // salinan yang generate URI/QR bisa jadi BEDA dari salinan yang menunggu balasan approval
+  // lewat relay, atau data pairing satu salinan ketimpa salinan lain di tengah proses —
+  // makanya QR/link tampil valid tapi approval dari wallet tidak pernah "nyampe".
+  // Solusinya: race-nya dipindah ke level FETCH TEKS SCRIPT (bukan level eksekusi). Begitu
+  // satu sumber menang, sumber lain langsung di-abort SEBELUM sempat dieksekusi apa pun —
+  // jadi cuma 1 salinan SDK yang PERNAH benar-benar jalan di halaman, sambil kecepatan race
+  // paralel tetap dipertahankan.
   window.__loadWcModule = async function(){
     if(window['@walletconnect/ethereum-provider']) return true;
     window.__wcLoadErrors = [];
-    // PARALEL, bukan satu-satu: semua sumber (self-host, jsdelivr, fastly, gcore, unpkg,
-    // + esm.sh via dynamic import) ditembak BERSAMAAN, dan kita pakai siapa pun yang
-    // sukses duluan. Kalau dicoba satu-satu, satu sumber yang lambat (timeout 8 detik)
-    // bikin sumber lain yang sebenarnya jalan normal jadi ikut telat dicoba — total bisa
-    // >40 detik sebelum nyerah. Diparalelkan, waktu tunggu maksimum turun jadi ~8 detik saja
-    // (durasi timeout terpanjang, bukan jumlah semuanya digabung).
-    const scriptAttempts = __wcSources.map(src =>
-      __loadScript(src, 8000).then(()=>{
-        if(!window['@walletconnect/ethereum-provider']){
-          throw new Error(src + ' → dimuat tapi modul tidak terdeteksi');
-        }
-        return src;
+    const controllers = __wcSources.map(()=> new AbortController());
+    const fetchAttempts = __wcSources.map((src, i) =>
+      fetch(src, { signal: controllers[i].signal }).then(res=>{
+        if(!res.ok) throw new Error(src + ' → HTTP ' + res.status);
+        return res.text().then(text => ({ src, text }));
       }).catch(e=>{
-        window.__wcLoadErrors.push(e.message || (src + ' → ' + e));
+        if(e.name !== 'AbortError'){
+          window.__wcLoadErrors.push(e.message || (src + ' → ' + e));
+        }
         throw e;
       })
     );
-    // esm.sh lewat dynamic import() — BUKAN <script src> biasa, infrastrukturnya
-    // (Cloudflare) beda total dari jsdelivr/unpkg di atas, jadi tetap dicoba bersamaan
-    // (bukan cadangan terakhir lagi) supaya ikut berpeluang menang duluan.
-    const esmAttempt = (async ()=>{
+    let winner = null;
+    try{
+      winner = await Promise.any(fetchAttempts);
+    }catch(aggregateErr){
+      // Semua fetch gagal — cadangan terakhir: esm.sh via dynamic import. Ini satu-satunya
+      // sumber yang TIDAK ikut di-race paralel bareng yang lain (supaya tidak nambah lagi
+      // salinan SDK yang berpotensi jalan bersamaan dengan sumber <script> di atas).
       try{
         const mod = await Promise.race([
           import(/* webpackIgnore: true */ 'https://esm.sh/@walletconnect/ethereum-provider@2.17.0'),
@@ -134,22 +143,27 @@
         ]);
         if(mod && mod.EthereumProvider){
           window['@walletconnect/ethereum-provider'] = mod;
-          return 'esm.sh';
+          return true;
         }
-        throw new Error('esm.sh → dimuat tapi EthereumProvider tidak ditemukan di modul');
-      }catch(e){
-        window.__wcLoadErrors.push('esm.sh → ' + e.message);
-        throw e;
+        window.__wcLoadErrors.push('esm.sh → dimuat tapi EthereumProvider tidak ditemukan di modul');
+      }catch(e2){
+        window.__wcLoadErrors.push('esm.sh → ' + (e2.message || e2));
       }
-    })();
-    try{
-      await Promise.any([...scriptAttempts, esmAttempt]);
-      return !!(window['@walletconnect/ethereum-provider']);
-    }catch(aggregateErr){
-      // Promise.any melempar kalau SEMUA sumber gagal — window.__wcLoadErrors di atas
-      // sudah berisi rincian tiap sumber untuk ditampilkan ke user.
       return false;
     }
+    // Batalkan SEMUA sumber lain SEKARANG JUGA — sebelum sempat dieksekusi — supaya cuma
+    // teks pemenang yang pernah jalan.
+    controllers.forEach((c, i)=>{ if(__wcSources[i] !== winner.src) c.abort(); });
+    // Eksekusi HANYA teks pemenang, sebagai satu <script> inline (bukan <script src> lagi) —
+    // tidak ada request kedua, dan tidak ada salinan kedua yang jalan.
+    const s = document.createElement('script');
+    s.text = winner.text;
+    document.head.appendChild(s);
+    if(!window['@walletconnect/ethereum-provider']){
+      window.__wcLoadErrors.push(winner.src + ' → dimuat tapi modul tidak terdeteksi setelah dieksekusi');
+      return false;
+    }
+    return true;
   };
   // Dipanggil otomatis saat halaman dibuka, supaya modul biasanya sudah siap begitu
   // user menekan tombol WalletConnect (tidak perlu nunggu dari nol saat itu juga).
