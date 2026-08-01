@@ -824,6 +824,7 @@ async function connectWalletConnect(){
     await openWcSession(Object.keys(CHAINS)[0]);
     enterDashboard();
   }catch(err){
+    document.getElementById('__wcLinkBar')?.remove();
     errBox.textContent = err.message || 'Gagal menghubungkan lewat WalletConnect.';
     errBox.classList.remove('hidden');
   }
@@ -851,7 +852,16 @@ async function openWcSession(key){
     projectId: WC_PROJECT_ID,
     chains: [chain.chainId],
     optionalChains: [],
-    showQrModal: true,
+    // FIX AKAR MASALAH SEBENARNYA: modal bawaan (@walletconnect/modal, showQrModal:true)
+    // punya bug lama yang dikenal luas di ekosistem WalletConnect — link deep-link ke
+    // MetaMask/Trust Wallet yang dibuatnya ter-ENCODE DUA KALI (mis. "wc%3A..." bukan
+    // "wc:..."), jadi wallet gagal parse link-nya. MetaMask menampilkan error jelas
+    // ("Pranala tidak valid"), sementara Trust Wallet gagal diam-diam (app kebuka tapi
+    // cuma loading kosong) — inilah sumber gejala approve yang tidak pernah muncul dari
+    // awal, BUKAN soal icons/domain/relay yang sudah dicoba sebelumnya.
+    // Solusi: matikan modal bawaan, dan bikin sendiri link deep-link yang di-encode
+    // dengan benar (encodeURIComponent SATU KALI saja) — lihat renderWcLinks() di bawah.
+    showQrModal: false,
     metadata: {
       name: 'NeoBid',
       description: 'Dompet & bridge multi-chain non-custodial',
@@ -871,19 +881,27 @@ async function openWcSession(key){
   // langkah sesudahnya (penerusan ke wallet). Ini fakta, bukan tebakan.
   wcProvider.on('display_uri', function(uri){
     try{
-      let bar = document.getElementById('__debugErrBar');
-      if(!bar){
-        bar = document.createElement('div');
-        bar.id = '__debugErrBar';
-        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#003a1a;color:#b3ffcf;font:12px monospace;padding:8px;max-height:35vh;overflow:auto;word-break:break-all;';
-        document.body.appendChild(bar);
-      }
-      const line = document.createElement('div');
-      line.textContent = '[WC display_uri] ' + uri;
-      bar.appendChild(line);
+      // FIX AKAR MASALAH: bikin sendiri link deep-link, encodeURIComponent PERSIS SEKALI
+      // (bukan dua kali seperti bug di modal bawaan). Format link ini mengikuti standar
+      // resmi tiap wallet (MetaMask: metamask.app.link, Trust Wallet: link.trustwallet.com).
+      const enc = encodeURIComponent(uri);
+      let bar = document.getElementById('__wcLinkBar');
+      if(bar) bar.remove();
+      bar = document.createElement('div');
+      bar.id = '__wcLinkBar';
+      bar.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,7,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;';
+      bar.innerHTML =
+        '<div style="color:#fff;font:600 15px system-ui;margin-bottom:6px;text-align:center">Pilih wallet untuk menghubungkan</div>'
+        + '<a href="https://metamask.app.link/wc?uri=' + enc + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#f6851b;color:#fff;font:600 15px system-ui;text-decoration:none;">🦊 Buka di MetaMask</a>'
+        + '<a href="https://link.trustwallet.com/wc?uri=' + enc + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#3375bb;color:#fff;font:600 15px system-ui;text-decoration:none;">🛡️ Buka di Trust Wallet</a>'
+        + '<div style="color:#8a93a6;font:12px system-ui;margin-top:8px;text-align:center">Wallet lain? Salin link mentah di bawah, lalu tempel di app wallet kamu (fitur "WalletConnect"/scan).</div>'
+        + '<div style="width:100%;max-width:320px;word-break:break-all;background:#10151f;color:#7fe0a8;font:11px monospace;padding:10px;border-radius:8px;max-height:80px;overflow:auto;">' + uri + '</div>'
+        + '<button onclick="document.getElementById(\'__wcLinkBar\').remove()" style="margin-top:10px;padding:10px 20px;border-radius:10px;background:#232a38;color:#fff;border:none;font:14px system-ui;">Batal</button>';
+      document.body.appendChild(bar);
     }catch(_){}
   });
-  await wcProvider.enable(); // membuka modal QR / deep-link, menunggu wallet approve — untuk chain INI saja
+  await wcProvider.enable(); // menunggu wallet approve — untuk chain INI saja
+  document.getElementById('__wcLinkBar')?.remove(); // tutup overlay pilihan wallet, koneksi berhasil
   rawProvider = wcProvider;
   ethProvider = new ethers.providers.Web3Provider(rawProvider, 'any');
   wcChainKey = key;
