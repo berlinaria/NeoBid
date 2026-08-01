@@ -884,7 +884,12 @@ async function openWcSession(key){
       // FIX AKAR MASALAH: bikin sendiri link deep-link, encodeURIComponent PERSIS SEKALI
       // (bukan dua kali seperti bug di modal bawaan). Format link ini mengikuti standar
       // resmi tiap wallet (MetaMask: metamask.app.link, Trust Wallet: link.trustwallet.com).
-      const enc = encodeURIComponent(uri);
+      // FIX AKAR MASALAH LANJUTAN: skema native (metamask://, trust://) ternyata memang
+      // mengharapkan uri MENTAH tanpa di-encode sama sekali (encodeURIComponent apa pun —
+      // bahkan cuma sekali — tetap bikin wallet gagal parse). Ini beda dari link universal
+      // (https://...app.link/...) yang butuh encoding standar. Jadi untuk skema native,
+      // uri ditempel apa adanya.
+      const bar_uri_raw = uri;
       let bar = document.getElementById('__wcLinkBar');
       if(bar) bar.remove();
       bar = document.createElement('div');
@@ -892,8 +897,8 @@ async function openWcSession(key){
       bar.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,7,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;';
       bar.innerHTML =
         '<div style="color:#fff;font:600 15px system-ui;margin-bottom:6px;text-align:center">Pilih wallet untuk menghubungkan</div>'
-        + '<a href="https://metamask.app.link/wc?uri=' + enc + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#f6851b;color:#fff;font:600 15px system-ui;text-decoration:none;">🦊 Buka di MetaMask</a>'
-        + '<a href="https://link.trustwallet.com/wc?uri=' + enc + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#3375bb;color:#fff;font:600 15px system-ui;text-decoration:none;">🛡️ Buka di Trust Wallet</a>'
+        + '<a href="metamask://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#f6851b;color:#fff;font:600 15px system-ui;text-decoration:none;">🦊 Buka di MetaMask</a>'
+        + '<a href="trust://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#3375bb;color:#fff;font:600 15px system-ui;text-decoration:none;">🛡️ Buka di Trust Wallet</a>'
         + '<div style="color:#8a93a6;font:12px system-ui;margin-top:8px;text-align:center">Wallet lain? Salin link mentah di bawah, lalu tempel di app wallet kamu (fitur "WalletConnect"/scan).</div>'
         + '<div style="width:100%;max-width:320px;word-break:break-all;background:#10151f;color:#7fe0a8;font:11px monospace;padding:10px;border-radius:8px;max-height:80px;overflow:auto;">' + uri + '</div>'
         + '<button onclick="document.getElementById(\'__wcLinkBar\').remove()" style="margin-top:10px;padding:10px 20px;border-radius:10px;background:#232a38;color:#fff;border:none;font:14px system-ui;">Batal</button>';
