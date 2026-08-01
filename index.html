@@ -903,6 +903,12 @@ async function openWcSession(key){
         + '<div style="width:100%;max-width:320px;word-break:break-all;background:#10151f;color:#7fe0a8;font:11px monospace;padding:10px;border-radius:8px;max-height:80px;overflow:auto;">' + uri + '</div>'
         + '<button onclick="document.getElementById(\'__wcLinkBar\').remove()" style="margin-top:10px;padding:10px 20px;border-radius:10px;background:#232a38;color:#fff;border:none;font:14px system-ui;">Batal</button>';
       document.body.appendChild(bar);
+      // AUTO-REDIRECT: langsung coba buka Trust Wallet otomatis begitu link didapat, tanpa
+      // perlu tap manual. Tombol di atas tetap ada sebagai cadangan kalau auto-redirect
+      // gagal (mis. Trust Wallet belum terinstall, atau browser blokir auto-switch app).
+      setTimeout(function(){
+        try{ window.location.href = 'trust://wc?uri=' + bar_uri_raw; }catch(_){}
+      }, 150);
     }catch(_){}
   });
   await wcProvider.enable(); // menunggu wallet approve — untuk chain INI saja
