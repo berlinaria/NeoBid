@@ -855,8 +855,14 @@ async function openWcSession(key){
     metadata: {
       name: 'NeoBid',
       description: 'Dompet & bridge multi-chain non-custodial',
-      url: window.location.origin || 'https://neobid.netlify.app',
-      icons: [],
+      url: window.location.origin || 'https://berlinaria.github.io/NeoBid',
+      // FIX AKAR MASALAH BARU: sebelumnya icons kosong ([]) — beberapa wallet (termasuk
+      // Trust Wallet) butuh minimal 1 URL ikon valid untuk merender layar session proposal
+      // (approve). Kalau kosong, sebagian wallet gagal render layar itu secara DIAM-DIAM
+      // (bukan error yang kelihatan) — persis gejala "app kebuka tapi cuma loading kosong,
+      // approve tidak pernah muncul" yang dilaporkan. Pakai ikon publik sementara untuk tes;
+      // idealnya diganti dengan ikon NeoBid sendiri yang di-host di repo (lihat catatan di bawah).
+      icons: ['https://avatars.githubusercontent.com/u/37784886'],
     },
   });
   // DIAGNOSTIK: kalau event ini TIDAK PERNAH muncul di banner debug, artinya NeoBid gagal
