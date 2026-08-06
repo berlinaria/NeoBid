@@ -881,15 +881,18 @@ async function openWcSession(key){
   // langkah sesudahnya (penerusan ke wallet). Ini fakta, bukan tebakan.
   wcProvider.on('display_uri', function(uri){
     try{
-      // FIX AKAR MASALAH: bikin sendiri link deep-link, encodeURIComponent PERSIS SEKALI
-      // (bukan dua kali seperti bug di modal bawaan). Format link ini mengikuti standar
-      // resmi tiap wallet (MetaMask: metamask.app.link, Trust Wallet: link.trustwallet.com).
-      // FIX AKAR MASALAH LANJUTAN: skema native (metamask://, trust://) ternyata memang
-      // mengharapkan uri MENTAH tanpa di-encode sama sekali (encodeURIComponent apa pun —
-      // bahkan cuma sekali — tetap bikin wallet gagal parse). Ini beda dari link universal
-      // (https://...app.link/...) yang butuh encoding standar. Jadi untuk skema native,
-      // uri ditempel apa adanya.
-      const bar_uri_raw = uri;
+      // FIX AKAR MASALAH (final): uri WalletConnect asli ("wc:xxx@2?relay-protocol=irn&symKey=...")
+      // SUDAH mengandung karakter '?', '&', '=' di dalamnya. Kalau uri ini ditempel APA ADANYA
+      // sebagai value dari parameter "uri" di "trust://wc?uri=<uri-di-sini>", karakter '&' dan '='
+      // di DALAM uri ikut dibaca sebagai pemisah parameter BARU oleh parser intent Android —
+      // akibatnya Trust Wallet cuma menerima uri yang TERPOTONG di karakter '&' pertama (symKey
+      // dan seterusnya hilang), bukan uri WalletConnect yang lengkap. Ini yang menyebabkan app
+      // kebuka tapi cuma blank/loading — datanya tidak lengkap untuk membentuk sesi pairing,
+      // BUKAN soal versi Trust Wallet atau relay. Kesimpulan sebelumnya ("uri harus mentah tanpa
+      // encoding") keliru — yang benar, uri HARUS di-encodeURIComponent TEPAT SATU KALI (bukan
+      // nol kali, bukan dua kali) supaya karakter '&'/'='/'?' di dalamnya jadi '%26'/'%3D'/'%3F'
+      // dan tidak dibaca sebagai pemisah oleh trust://wc?uri=... itu sendiri.
+      const bar_uri_raw = encodeURIComponent(uri);
       let bar = document.getElementById('__wcLinkBar');
       if(bar) bar.remove();
       bar = document.createElement('div');
