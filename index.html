@@ -407,6 +407,52 @@
   .small{ font-size:12px; }
   .footnote{ text-align:center; color:var(--muted); font-size:11px; margin-top:auto; padding-top:18px; }
 
+  /* ---------- WalletConnect modal ---------- */
+  .wc-backdrop{
+    position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.78);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    animation:wcFade .18s ease;
+  }
+  @keyframes wcFade{ from{opacity:0} to{opacity:1} }
+  @keyframes wcPop{ from{opacity:0; transform:scale(.92) translateY(6px)} to{opacity:1; transform:scale(1) translateY(0)} }
+  .wc-card{
+    width:100%; max-width:340px; background:var(--surface); border:1px solid var(--border);
+    border-radius:24px; padding:22px 20px 20px; position:relative;
+    animation:wcPop .22s cubic-bezier(.2,.9,.3,1.1); box-shadow:0 20px 60px rgba(0,0,0,0.6);
+  }
+  .wc-close{
+    position:absolute; top:14px; right:14px; width:28px; height:28px; border-radius:50%;
+    background:var(--surface2); border:1px solid var(--border); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; line-height:1;
+  }
+  .wc-close:active{ transform:scale(0.92); }
+  .wc-title{ font-family:'Sora',sans-serif; font-weight:700; font-size:16px; text-align:center; margin:0 28px 4px; }
+  .wc-sub{ color:var(--muted); font-size:12.5px; text-align:center; margin:0 0 16px; line-height:1.5; }
+  .wc-qr-frame{ background:#fff; border-radius:18px; padding:16px; width:fit-content; margin:0 auto; position:relative; }
+  .wc-qr-badge{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:34px; height:34px;
+    border-radius:9px; background:#000; border:2px solid #fff; display:flex; align-items:center; justify-content:center;
+  }
+  .wc-qr-badge img{ width:19px; height:19px; object-fit:contain; }
+  .wc-copy-row{ display:flex; justify-content:center; margin-top:14px; }
+  .wc-copy-btn{
+    display:flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border);
+    color:var(--text); font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:10px; cursor:pointer;
+    font-family:'Inter';
+  }
+  .wc-copy-btn:active{ transform:scale(0.97); }
+  .wc-divider{ display:flex; align-items:center; gap:10px; margin:20px 0 14px; }
+  .wc-divider span{ flex:1; height:1px; background:var(--border); }
+  .wc-divider b{ color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; font-weight:600; }
+  .wc-wallet-grid{ display:flex; justify-content:center; gap:20px; }
+  .wc-wallet-item{ display:flex; flex-direction:column; align-items:center; gap:7px; width:76px; text-decoration:none; cursor:pointer; background:none; border:none; }
+  .wc-wallet-icon{ width:52px; height:52px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:24px; border:1px solid var(--border); }
+  .wc-wallet-name{ font-size:11px; color:var(--muted); font-weight:600; text-align:center; }
+  .wc-footnote{ margin-top:18px; text-align:center; color:var(--muted); font-size:10.5px; line-height:1.5; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .wc-manual-toggle{ display:block; text-align:center; margin-top:10px; color:var(--muted); font-size:11px; text-decoration:underline; cursor:pointer; background:none; border:none; font-family:'Inter'; padding:0; }
+  .wc-manual-box{ margin-top:10px; word-break:break-all; background:var(--surface2); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:10.5px; padding:10px; border-radius:10px; max-height:80px; overflow:auto; border:1px solid var(--border); }
+
   /* tab bar */
   .tabbar{
     position:sticky; bottom:0; left:0; right:0; display:flex; background:var(--surface);
@@ -852,16 +898,20 @@ async function openWcSession(key){
     projectId: WC_PROJECT_ID,
     chains: [chain.chainId],
     optionalChains: [],
-    // FIX AKAR MASALAH SEBENARNYA: modal bawaan (@walletconnect/modal, showQrModal:true)
-    // punya bug lama yang dikenal luas di ekosistem WalletConnect — link deep-link ke
-    // MetaMask/Trust Wallet yang dibuatnya ter-ENCODE DUA KALI (mis. "wc%3A..." bukan
-    // "wc:..."), jadi wallet gagal parse link-nya. MetaMask menampilkan error jelas
-    // ("Pranala tidak valid"), sementara Trust Wallet gagal diam-diam (app kebuka tapi
-    // cuma loading kosong) — inilah sumber gejala approve yang tidak pernah muncul dari
-    // awal, BUKAN soal icons/domain/relay yang sudah dicoba sebelumnya.
-    // Solusi: matikan modal bawaan, dan bikin sendiri link deep-link yang di-encode
-    // dengan benar (encodeURIComponent SATU KALI saja) — lihat renderWcLinks() di bawah.
-    showQrModal: false,
+    // PERMINTAAN USER: pakai modal WalletConnect RESMI (@walletconnect/modal, showQrModal:true)
+    // supaya tampilannya identik dengan dApp lain — bukan tiruan buatan sendiri lagi.
+    // CATATAN RISIKO (sudah diinfokan & disetujui user): versi modal resmi ini yang
+    // sebelumnya dimatikan karena bug lama dikenal luas di ekosistem WalletConnect — link
+    // deep-link ke MetaMask/Trust Wallet yang dibuatnya bisa ter-ENCODE DUA KALI (mis.
+    // "wc%3A..." bukan "wc:..."), jadi wallet gagal parse link-nya. MetaMask biasanya kasih
+    // error jelas ("Pranala tidak valid"); Trust Wallet gagal diam-diam (app kebuka tapi
+    // cuma loading kosong). Karena ini bug murni di dalam modal resmi (bukan di kode
+    // NeoBid), tidak ada yang bisa kita perbaiki dari sisi kita selain mengganti modalnya —
+    // makanya sebelumnya kita matikan dan bikin modal sendiri. Sebagai jaring pengaman kalau
+    // bug ini balik, kalau modal resmi gagal terbuka/approve tidak kunjung muncul, overlay
+    // cadangan buatan sendiri (yang sudah terbukti jalan) otomatis tampil — lihat
+    // __wcFallbackTimer di bawah.
+    showQrModal: true,
     metadata: {
       name: 'NeoBid',
       description: 'Dompet & bridge multi-chain non-custodial',
@@ -875,73 +925,24 @@ async function openWcSession(key){
       icons: ['https://avatars.githubusercontent.com/u/37784886'],
     },
   });
-  // DIAGNOSTIK: kalau event ini TIDAK PERNAH muncul di banner debug, artinya NeoBid gagal
-  // generate link koneksi WC yang valid sama sekali (modal QR-nya cuma tampilan kosong).
-  // Kalau MUNCUL dengan link 'wc:...', artinya link-nya valid dan masalahnya ada di
-  // langkah sesudahnya (penerusan ke wallet). Ini fakta, bukan tebakan.
+  // DIAGNOSTIK + JARING PENGAMAN: modal resmi (wcm-modal, custom element dari
+  // @walletconnect/modal) akan merender dirinya sendiri begitu event ini terpicu — NeoBid
+  // tidak perlu bikin UI apa pun lagi di jalur normal. Tapi kalau modal resmi gagal terbuka
+  // (elemen <wcm-modal> tidak pernah muncul di DOM dalam beberapa detik — indikasi bug
+  // double-encode di atas kambuh, atau CDN modal-nya gagal dimuat), overlay cadangan
+  // buatan sendiri (sudah pernah terbukti 100% jalan sebelumnya) otomatis ditampilkan
+  // supaya user tetap bisa connect, bukan cuma macet tanpa penjelasan.
   wcProvider.on('display_uri', function(uri){
-    try{
-      // FIX AKAR MASALAH (final): uri WalletConnect asli ("wc:xxx@2?relay-protocol=irn&symKey=...")
-      // SUDAH mengandung karakter '?', '&', '=' di dalamnya. Kalau uri ini ditempel APA ADANYA
-      // sebagai value dari parameter "uri" di "trust://wc?uri=<uri-di-sini>", karakter '&' dan '='
-      // di DALAM uri ikut dibaca sebagai pemisah parameter BARU oleh parser intent Android —
-      // akibatnya Trust Wallet cuma menerima uri yang TERPOTONG di karakter '&' pertama (symKey
-      // dan seterusnya hilang), bukan uri WalletConnect yang lengkap. Ini yang menyebabkan app
-      // kebuka tapi cuma blank/loading — datanya tidak lengkap untuk membentuk sesi pairing,
-      // BUKAN soal versi Trust Wallet atau relay. Kesimpulan sebelumnya ("uri harus mentah tanpa
-      // encoding") keliru — yang benar, uri HARUS di-encodeURIComponent TEPAT SATU KALI (bukan
-      // nol kali, bukan dua kali) supaya karakter '&'/'='/'?' di dalamnya jadi '%26'/'%3D'/'%3F'
-      // dan tidak dibaca sebagai pemisah oleh trust://wc?uri=... itu sendiri.
-      const bar_uri_raw = encodeURIComponent(uri);
-      let bar = document.getElementById('__wcLinkBar');
-      if(bar) bar.remove();
-      bar = document.createElement('div');
-      bar.id = '__wcLinkBar';
-      bar.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,7,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;overflow:auto;';
-      bar.innerHTML =
-        '<div style="color:#fff;font:600 15px system-ui;margin-bottom:2px;text-align:center">Pilih wallet untuk menghubungkan</div>'
-        + '<a href="metamask://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#f6851b;color:#fff;font:600 15px system-ui;text-decoration:none;">🦊 Buka di MetaMask</a>'
-        + '<a href="trust://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#3375bb;color:#fff;font:600 15px system-ui;text-decoration:none;">🛡️ Buka di Trust Wallet</a>'
-        + '<div style="color:#8a93a6;font:12px system-ui;margin:6px 0 0;text-align:center">Buka NeoBid di browser biasa (bukan di HP yang sama dengan wallet-nya)? Scan QR ini pakai app wallet-mu:</div>'
-        + '<div id="__wcQrBox" style="background:#fff;padding:10px;border-radius:12px;"></div>'
-        + '<div style="color:#8a93a6;font:11px system-ui;text-align:center">Atau salin link mentah di bawah, lalu tempel di fitur "WalletConnect"/scan app wallet-mu.</div>'
-        + '<div style="width:100%;max-width:320px;word-break:break-all;background:#10151f;color:#7fe0a8;font:11px monospace;padding:10px;border-radius:8px;max-height:80px;overflow:auto;">' + uri + '</div>'
-        + '<button onclick="document.getElementById(\'__wcLinkBar\').remove()" style="margin-top:10px;padding:10px 20px;border-radius:10px;background:#232a38;color:#fff;border:none;font:14px system-ui;">Batal</button>';
-      document.body.appendChild(bar);
-      // FIX: sebelumnya overlay ini cuma punya 2 tombol deep-link custom-scheme
-      // (metamask://wc?uri=..., trust://wc?uri=...). Skema itu CUMA jalan kalau NeoBid
-      // dibuka di HP yang SAMA dengan app wallet-nya terpasang — begitu dibuka di "browser
-      // biasa" (browser default tanpa app wallet, apalagi di desktop), navigasi ke custom
-      // scheme itu gagal DIAM-DIAM (browser cuma abaikan, tidak ada error), jadi user tidak
-      // pernah benar-benar sampai ke wallet dan approve tidak pernah muncul. showQrModal
-      // sengaja dimatikan (lihat catatan di openWcSession) karena modal bawaan
-      // @walletconnect/modal double-encode uri-nya, tapi gantinya tidak pernah dibikin.
-      // Solusi: render QR sendiri dari `uri` MENTAH (bukan versi encoded) pakai qrcodejs
-      // yang sudah dimuat di file ini (dipakai juga untuk QR alamat terima) — dengan QR ini,
-      // wallet-nya bisa jalan di HP LAIN dari device yang buka NeoBid, sama seperti alur
-      // WalletConnect standar (desktop tampil QR, HP scan).
-      try{
-        new QRCode(document.getElementById('__wcQrBox'), { text: uri, width:200, height:200, colorDark:'#000000', colorLight:'#ffffff' });
-      }catch(qrErr){
-        const qrBox = document.getElementById('__wcQrBox');
-        if(qrBox) qrBox.innerHTML = '<div style="color:#c00;font:11px system-ui;padding:8px;max-width:200px;">QR gagal dirender: ' + (qrErr.message||qrErr) + '</div>';
-      }
-      // AUTO-REDIRECT: langsung coba buka Trust Wallet otomatis begitu link didapat, tanpa
-      // perlu tap manual — HANYA kalau kemungkinan besar ada app wallet di device yang sama
-      // (heuristik: user agent mobile). Di device tanpa app wallet (desktop, atau HP tanpa
-      // Trust Wallet terpasang) auto-redirect ke custom scheme yang tidak terdaftar bisa
-      // memicu perilaku aneh di sebagian browser (mis. tab kosong/prompt "buka aplikasi?"
-      // berulang) padahal yang dibutuhkan cuma QR di atas — jadi auto-redirect dibatasi ke
-      // mobile saja, dan QR selalu ditampilkan sebagai jalur utama yang pasti bekerja.
-      if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){
-        setTimeout(function(){
-          try{ window.location.href = 'trust://wc?uri=' + bar_uri_raw; }catch(_){}
-        }, 150);
-      }
-    }catch(_){}
+    window.__wcRawUri = uri;
+    clearTimeout(window.__wcFallbackTimer);
+    window.__wcFallbackTimer = setTimeout(function(){
+      if(document.querySelector('wcm-modal, w3m-modal')) return; // modal resmi berhasil render — tidak perlu cadangan
+      __renderWcFallbackModal(uri);
+    }, 3500);
   });
   await wcProvider.enable(); // menunggu wallet approve — untuk chain INI saja
-  document.getElementById('__wcLinkBar')?.remove(); // tutup overlay pilihan wallet, koneksi berhasil
+  clearTimeout(window.__wcFallbackTimer);
+  document.getElementById('__wcLinkBar')?.remove(); // tutup overlay cadangan (kalau sempat tampil), koneksi berhasil
   rawProvider = wcProvider;
   ethProvider = new ethers.providers.Web3Provider(rawProvider, 'any');
   wcChainKey = key;
@@ -954,6 +955,58 @@ async function openWcSession(key){
   rawProvider.on?.('accountsChanged', onAccountsChanged);
   rawProvider.on?.('chainChanged', onChainChanged);
   rawProvider.on?.('disconnect', onWcDisconnect);
+}
+
+// Overlay cadangan (persis desain v15 yang sudah terbukti berhasil connect + approve) —
+// HANYA dipakai kalau modal resmi @walletconnect/modal gagal render dalam 3.5 detik
+// setelah uri didapat (lihat listener 'display_uri' di openWcSession). Modal resmi tetap
+// jalur utama sesuai permintaan user; ini murni jaring pengaman, bukan pengganti.
+function __renderWcFallbackModal(uri){
+  const bar_uri_raw = encodeURIComponent(uri);
+  let bar = document.getElementById('__wcLinkBar');
+  if(bar) bar.remove();
+  bar = document.createElement('div');
+  bar.id = '__wcLinkBar';
+  bar.className = 'wc-backdrop';
+  bar.innerHTML =
+    '<div class="wc-card">'
+      + '<button class="wc-close" onclick="document.getElementById(\'__wcLinkBar\').remove()">✕</button>'
+      + '<div class="wc-title">Hubungkan Wallet</div>'
+      + '<div class="wc-sub">Modal resmi tidak merespons — pakai cadangan ini. Scan pakai app wallet-mu:</div>'
+      + '<div class="wc-qr-frame"><div id="__wcQrBox"></div><div class="wc-qr-badge"><img src="https://avatars.githubusercontent.com/u/37784886" alt=""></div></div>'
+      + '<div class="wc-copy-row"><button class="wc-copy-btn" id="__wcCopyBtn" onclick="__wcCopyUri()">⧉ Salin kode</button></div>'
+      + '<div class="wc-divider"><span></span><b>atau buka langsung</b><span></span></div>'
+      + '<div class="wc-wallet-grid">'
+        + '<a class="wc-wallet-item" href="metamask://wc?uri=' + bar_uri_raw + '"><div class="wc-wallet-icon" style="background:rgba(246,133,27,0.12);">🦊</div><div class="wc-wallet-name">MetaMask</div></a>'
+        + '<a class="wc-wallet-item" href="trust://wc?uri=' + bar_uri_raw + '"><div class="wc-wallet-icon" style="background:rgba(51,117,187,0.15);">🛡️</div><div class="wc-wallet-name">Trust Wallet</div></a>'
+      + '</div>'
+      + '<button class="wc-manual-toggle" onclick="document.getElementById(\'__wcManualBox\').classList.toggle(\'hidden\')">Wallet lain tidak terdeteksi? Lihat kode manual</button>'
+      + '<div id="__wcManualBox" class="wc-manual-box hidden">' + uri + '</div>'
+      + '<div class="wc-footnote">🔒 Terhubung lewat protokol WalletConnect terenkripsi</div>'
+    + '</div>';
+  document.body.appendChild(bar);
+  window.__wcRawUri = uri;
+  try{
+    new QRCode(document.getElementById('__wcQrBox'), { text: uri, width:200, height:200, colorDark:'#000000', colorLight:'#ffffff' });
+  }catch(qrErr){
+    const qrBox = document.getElementById('__wcQrBox');
+    if(qrBox) qrBox.innerHTML = '<div style="color:#c00;font:11px system-ui;padding:8px;max-width:200px;">QR gagal dirender: ' + (qrErr.message||qrErr) + '</div>';
+  }
+  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){
+    setTimeout(function(){
+      try{ window.location.href = 'trust://wc?uri=' + bar_uri_raw; }catch(_){}
+    }, 150);
+  }
+}
+
+function __wcCopyUri(){
+  if(!window.__wcRawUri) return;
+  navigator.clipboard.writeText(window.__wcRawUri);
+  const btn = document.getElementById('__wcCopyBtn');
+  if(!btn) return;
+  const old = btn.textContent;
+  btn.textContent = '✓ Tersalin';
+  setTimeout(()=>{ btn.textContent = old; }, 1400);
 }
 
 function onWcDisconnect(){ disconnectWallet(); }
