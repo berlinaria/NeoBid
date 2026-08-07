@@ -897,21 +897,47 @@ async function openWcSession(key){
       if(bar) bar.remove();
       bar = document.createElement('div');
       bar.id = '__wcLinkBar';
-      bar.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,7,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;';
+      bar.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(4,7,14,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;overflow:auto;';
       bar.innerHTML =
-        '<div style="color:#fff;font:600 15px system-ui;margin-bottom:6px;text-align:center">Pilih wallet untuk menghubungkan</div>'
+        '<div style="color:#fff;font:600 15px system-ui;margin-bottom:2px;text-align:center">Pilih wallet untuk menghubungkan</div>'
         + '<a href="metamask://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#f6851b;color:#fff;font:600 15px system-ui;text-decoration:none;">🦊 Buka di MetaMask</a>'
         + '<a href="trust://wc?uri=' + bar_uri_raw + '" style="width:100%;max-width:320px;text-align:center;padding:14px;border-radius:12px;background:#3375bb;color:#fff;font:600 15px system-ui;text-decoration:none;">🛡️ Buka di Trust Wallet</a>'
-        + '<div style="color:#8a93a6;font:12px system-ui;margin-top:8px;text-align:center">Wallet lain? Salin link mentah di bawah, lalu tempel di app wallet kamu (fitur "WalletConnect"/scan).</div>'
+        + '<div style="color:#8a93a6;font:12px system-ui;margin:6px 0 0;text-align:center">Buka NeoBid di browser biasa (bukan di HP yang sama dengan wallet-nya)? Scan QR ini pakai app wallet-mu:</div>'
+        + '<div id="__wcQrBox" style="background:#fff;padding:10px;border-radius:12px;"></div>'
+        + '<div style="color:#8a93a6;font:11px system-ui;text-align:center">Atau salin link mentah di bawah, lalu tempel di fitur "WalletConnect"/scan app wallet-mu.</div>'
         + '<div style="width:100%;max-width:320px;word-break:break-all;background:#10151f;color:#7fe0a8;font:11px monospace;padding:10px;border-radius:8px;max-height:80px;overflow:auto;">' + uri + '</div>'
         + '<button onclick="document.getElementById(\'__wcLinkBar\').remove()" style="margin-top:10px;padding:10px 20px;border-radius:10px;background:#232a38;color:#fff;border:none;font:14px system-ui;">Batal</button>';
       document.body.appendChild(bar);
+      // FIX: sebelumnya overlay ini cuma punya 2 tombol deep-link custom-scheme
+      // (metamask://wc?uri=..., trust://wc?uri=...). Skema itu CUMA jalan kalau NeoBid
+      // dibuka di HP yang SAMA dengan app wallet-nya terpasang — begitu dibuka di "browser
+      // biasa" (browser default tanpa app wallet, apalagi di desktop), navigasi ke custom
+      // scheme itu gagal DIAM-DIAM (browser cuma abaikan, tidak ada error), jadi user tidak
+      // pernah benar-benar sampai ke wallet dan approve tidak pernah muncul. showQrModal
+      // sengaja dimatikan (lihat catatan di openWcSession) karena modal bawaan
+      // @walletconnect/modal double-encode uri-nya, tapi gantinya tidak pernah dibikin.
+      // Solusi: render QR sendiri dari `uri` MENTAH (bukan versi encoded) pakai qrcodejs
+      // yang sudah dimuat di file ini (dipakai juga untuk QR alamat terima) — dengan QR ini,
+      // wallet-nya bisa jalan di HP LAIN dari device yang buka NeoBid, sama seperti alur
+      // WalletConnect standar (desktop tampil QR, HP scan).
+      try{
+        new QRCode(document.getElementById('__wcQrBox'), { text: uri, width:200, height:200, colorDark:'#000000', colorLight:'#ffffff' });
+      }catch(qrErr){
+        const qrBox = document.getElementById('__wcQrBox');
+        if(qrBox) qrBox.innerHTML = '<div style="color:#c00;font:11px system-ui;padding:8px;max-width:200px;">QR gagal dirender: ' + (qrErr.message||qrErr) + '</div>';
+      }
       // AUTO-REDIRECT: langsung coba buka Trust Wallet otomatis begitu link didapat, tanpa
-      // perlu tap manual. Tombol di atas tetap ada sebagai cadangan kalau auto-redirect
-      // gagal (mis. Trust Wallet belum terinstall, atau browser blokir auto-switch app).
-      setTimeout(function(){
-        try{ window.location.href = 'trust://wc?uri=' + bar_uri_raw; }catch(_){}
-      }, 150);
+      // perlu tap manual — HANYA kalau kemungkinan besar ada app wallet di device yang sama
+      // (heuristik: user agent mobile). Di device tanpa app wallet (desktop, atau HP tanpa
+      // Trust Wallet terpasang) auto-redirect ke custom scheme yang tidak terdaftar bisa
+      // memicu perilaku aneh di sebagian browser (mis. tab kosong/prompt "buka aplikasi?"
+      // berulang) padahal yang dibutuhkan cuma QR di atas — jadi auto-redirect dibatasi ke
+      // mobile saja, dan QR selalu ditampilkan sebagai jalur utama yang pasti bekerja.
+      if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){
+        setTimeout(function(){
+          try{ window.location.href = 'trust://wc?uri=' + bar_uri_raw; }catch(_){}
+        }, 150);
+      }
     }catch(_){}
   });
   await wcProvider.enable(); // menunggu wallet approve — untuk chain INI saja
